@@ -47,8 +47,18 @@ async def predict(
                 "confidence": float(box.conf[0])
             })
         
-        has_pneumonia = any(d['label'].upper() == 'PNEUMONIA' for d in detections)
-        message = "Indikasi Pneumonia Terdeteksi" if has_pneumonia else "Normal"
+        # --- Logika Hasil yang Lebih Pintar ---
+        # Mencari apakah ada kata 'PNEUMONIA' di label manapun (misal: VIRAL_PNEUMONIA, BACTERIAL_PNEUMONIA)
+        has_pneumonia = any("PNEUMONIA" in d['label'].upper() for d in detections)
+        
+        if has_pneumonia:
+            # Mengambil label spesifik yang terdeteksi pertama kali
+            detected_label = next(d['label'] for d in detections if "PNEUMONIA" in d['label'].upper())
+            message = f"Indikasi {detected_label.replace('_', ' ')} Terdeteksi"
+        elif len(detections) > 0:
+            message = "Hasil Analisis: Paru-paru dalam kondisi NORMAL."
+        else:
+            message = "Tidak ada objek yang terdeteksi."
 
         # 3. Plot gambar (Bounding Boxes)
         res_plotted = results[0].plot() # Menghasilkan array gambar dengan kotak
