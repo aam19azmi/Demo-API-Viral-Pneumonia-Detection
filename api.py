@@ -47,9 +47,16 @@ async def predict(
                 "box": box.xyxy[0].tolist() # Koordinat bounding box jika n8n butuh
             })
         
-        # Logika Hasil
-        has_pneumonia = len(detections) > 0
-        message = "Indikasi Pneumonia Terdeteksi" if has_pneumonia else "Normal / Tidak Terdeteksi"
+        # --- Logika Hasil Baru ---
+        # Kita cek apakah ada label 'PNEUMONIA' di dalam daftar deteksi
+        has_pneumonia = any(d['label'].upper() == 'PNEUMONIA' for d in detections)
+        
+        if has_pneumonia:
+            message = "Indikasi Pneumonia Terdeteksi. Segera konsultasikan ke dokter."
+        elif len(detections) > 0:
+            message = "Hasil Analisis: Paru-paru dalam kondisi NORMAL."
+        else:
+            message = "Tidak ada objek yang terdeteksi. Pastikan gambar adalah foto X-Ray dada."
         
         return {
             "status": "success",
