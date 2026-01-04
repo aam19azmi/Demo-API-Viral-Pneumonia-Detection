@@ -20,5 +20,5 @@ COPY . .
 # Expose port yang digunakan FastAPI
 EXPOSE 8000
 
-# Jalankan API menggunakan uvicorn
-CMD ["uvicorn", "api.py:app", "--host", "0.0.0.0", "--port", "8000"]
+# Ubah baris terakhir menjadi ini:
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
