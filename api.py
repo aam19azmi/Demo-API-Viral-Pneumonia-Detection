@@ -4,6 +4,8 @@ import uvicorn
 from PIL import Image
 import io
 import os
+from fastapi.responses import StreamingResponse
+import json
 
 app = FastAPI(title="Pneumonia Detection API - AzmiDev")
 
@@ -19,59 +21,59 @@ API_KEY_SECRET = os.getenv("API_KEY_SECRET", "AzmiHealthAI_Secret")
 
 @app.get("/")
 def home():
-    return {"status": "online", "message": "Pneumonia Detection API is running"}
+    redirect_url = "https://demo-viral-pneumonia-detection-dpagyfkt9pyxbz2svfgxsd.streamlit.app/"
+    return {"redirect_url": redirect_url}
 
 @app.post("/predict")
 async def predict(
     file: UploadFile = File(...), 
-    x_api_key: str = Header(None) # n8n harus mengirim header 'x-api-key'
+    x_api_key: str = Header(None)
 ):
-    # Validasi API Key
     if x_api_key != API_KEY_SECRET:
-        raise HTTPException(status_code=403, detail="Akses ditolak: API Key salah.")
+        raise HTTPException(status_code=403, detail="Akses ditolak.")
 
     try:
-        # Membaca gambar
         contents = await file.read()
         img = Image.open(io.BytesIO(contents)).convert("RGB")
         
-        # Jalankan Inferensi
-        # conf=0.4 untuk keseimbangan antara presisi dan recall
+        # 1. Jalankan Inferensi
         results = model.predict(img, conf=0.4)
         
+        # 2. Ambil data deteksi untuk Logika
         detections = []
         for box in results[0].boxes:
             detections.append({
                 "label": model.names[int(box.cls[0])],
-                "confidence": float(box.conf[0]),
-                "box": box.xyxy[0].tolist() # Koordinat bounding box jika n8n butuh
+                "confidence": float(box.conf[0])
             })
         
-        # --- Logika Hasil Baru ---
-        # Kita cek apakah ada label 'PNEUMONIA' di dalam daftar deteksi
         has_pneumonia = any(d['label'].upper() == 'PNEUMONIA' for d in detections)
-        
-        if has_pneumonia:
-            message = "Indikasi Pneumonia Terdeteksi. Segera konsultasikan ke dokter."
-        elif len(detections) > 0:
-            message = "Hasil Analisis: Paru-paru dalam kondisi NORMAL."
-        else:
-            message = "Tidak ada objek yang terdeteksi. Pastikan gambar adalah foto X-Ray dada."
-        
-        return {
-            "status": "success",
-            "results_count": len(detections),
+        message = "Indikasi Pneumonia Terdeteksi" if has_pneumonia else "Normal"
+
+        # 3. Plot gambar (Bounding Boxes)
+        res_plotted = results[0].plot() # Menghasilkan array gambar dengan kotak
+        img_res = Image.fromarray(res_plotted)
+
+        # 4. Simpan gambar hasil deteksi ke memory buffer
+        buf = io.BytesIO()
+        img_res.save(buf, format="JPEG")
+        buf.seek(0)
+
+        # 5. Bungkus data JSON ke dalam string untuk dikirim via Header
+        result_data = {
             "is_pneumonia": has_pneumonia,
             "message": message,
-            "detections": detections,
-            "model_version": "YOLOv8s-GWO-V1"
+            "label": detections[0]['label'] if detections else "N/A",
+            "confidence": detections[0]['confidence'] if detections else 0
         }
+
+        # Mengembalikan File Gambar + Data JSON di Header 'x-result'
+        return StreamingResponse(
+            buf, 
+            media_type="image/jpeg",
+            headers={"x-result": json.dumps(result_data)}
+        )
     
     except Exception as e:
-        return {"status": "error", "message": f"Terjadi kesalahan: {str(e)}"}
-
-if __name__ == "__main__":
-    # Railway membutuhkan port yang dinamis, diambil dari environment variable PORT
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        raise HTTPException(status_code=500, detail=str(e))
     
